@@ -129,13 +129,12 @@ func verifySNI(cert *x509.Certificate, serverName string) bool {
 }
 
 func detectMITM(cert *x509.Certificate) (bool, string) {
-	if cert.Issuer.CommonName == cert.Subject.CommonName &&
-		len(cert.Issuer.Organization) > 0 &&
-		len(cert.Subject.Organization) > 0 &&
-		cert.Issuer.Organization[0] == cert.Subject.Organization[0] {
+	// Self-signed: Issuer and Subject are identical
+	if cert.Issuer.String() == cert.Subject.String() {
 		return true, "自签名证书"
 	}
 
+	// Check known enterprise proxy CAs
 	issuerOrg := ""
 	if len(cert.Issuer.Organization) > 0 {
 		issuerOrg = cert.Issuer.Organization[0]
@@ -143,6 +142,14 @@ func detectMITM(cert *x509.Certificate) (bool, string) {
 	for _, ca := range mitmCAOrgs {
 		if strings.Contains(strings.ToLower(issuerOrg), strings.ToLower(ca)) {
 			return true, "企业代理证书 (" + ca + ")"
+		}
+	}
+
+	// Check if cert is issued by a non-public CA (not in system trust store)
+	opts := x509.VerifyOptions{DNSName: ""}
+	if _, err := cert.Verify(opts); err != nil {
+		if _, ok := err.(x509.UnknownAuthorityError); ok {
+			return true, "非公共 CA 签发"
 		}
 	}
 

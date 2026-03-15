@@ -337,11 +337,14 @@ func (p *ProtocolProbe) probeSSH(ctx context.Context, target *Target) *ProbeResu
 
 func (p *ProtocolProbe) probeGenericTCP(ctx context.Context, target *Target) *ProbeResult {
 	details := &ProtocolDetails{Type: "tcp"}
+	start := time.Now()
 
 	addr := p.addr(target)
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
+		elapsed := time.Since(start)
 		result := NewResult("protocol", StatusError, fmt.Sprintf("TCP 重连失败: %v", err))
+		result.SetDuration(elapsed)
 		result.Protocol = details
 		return result
 	}
@@ -354,11 +357,13 @@ func (p *ProtocolProbe) probeGenericTCP(ctx context.Context, target *Target) *Pr
 		details.Banner = strings.TrimSpace(string(buf[:n]))
 	}
 
+	elapsed := time.Since(start)
 	msg := "TCP 连接成功"
 	if details.Banner != "" {
 		msg += " | Banner: " + details.Banner
 	}
 	result := NewResult("protocol", StatusOK, msg)
+	result.SetDuration(elapsed)
 	result.Protocol = details
 	return result
 }
