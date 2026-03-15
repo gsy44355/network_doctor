@@ -53,6 +53,11 @@ func (r *ProbeResult) SetDuration(d time.Duration) {
 	r.DurationMs = d.Milliseconds()
 }
 
+// FinalizeStatus syncs StatusStr from Status. Call before JSON serialization.
+func (r *ProbeResult) FinalizeStatus() {
+	r.StatusStr = r.Status.String()
+}
+
 type SystemDetails struct {
 	Proxy     string `json:"proxy"`
 	TUN       string `json:"tun"`

@@ -57,30 +57,29 @@ func detectTUN() (name, desc string) {
 		return "", ""
 	}
 
-	tunPrefixes := []string{"utun", "tun", "wintun", "tap"}
-	tunApps := map[string]string{
-		"utun":    "TUN",
-		"tun":     "TUN",
-		"cali":    "Calico",
-		"flannel": "Flannel",
-		"wg":      "WireGuard",
+	// Ordered list: longer prefixes first to ensure correct matching
+	type tunEntry struct {
+		prefix string
+		label  string
+	}
+	tunEntries := []tunEntry{
+		{"wintun", "WinTUN"},
+		{"flannel", "Flannel"},
+		{"utun", "TUN"},
+		{"tun", "TUN"},
+		{"tap", "TAP"},
+		{"cali", "Calico"},
+		{"wg", "WireGuard"},
 	}
 
 	for _, iface := range ifaces {
 		nameLower := strings.ToLower(iface.Name)
-		for _, prefix := range tunPrefixes {
-			if strings.HasPrefix(nameLower, prefix) {
+		for _, entry := range tunEntries {
+			if strings.HasPrefix(nameLower, entry.prefix) {
 				if iface.Flags&net.FlagUp == 0 {
 					continue
 				}
-				app := "未知应用"
-				for k, v := range tunApps {
-					if strings.HasPrefix(nameLower, k) {
-						app = v
-						break
-					}
-				}
-				return iface.Name, iface.Name + " (" + app + ")"
+				return iface.Name, iface.Name + " (" + entry.label + ")"
 			}
 		}
 	}
