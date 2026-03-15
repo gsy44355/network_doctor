@@ -95,7 +95,7 @@ func (p *ProtocolProbe) probeMySQL(ctx context.Context, target *Target) *ProbeRe
 	addr := p.addr(target)
 	start := time.Now()
 
-	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	conn, err := net.DialTimeout("tcp", addr, dialTimeout(ctx))
 	if err != nil {
 		result := NewResult("protocol", StatusError, fmt.Sprintf("MySQL 连接失败: %v", err))
 		result.Protocol = &ProtocolDetails{Type: "mysql"}
@@ -103,7 +103,7 @@ func (p *ProtocolProbe) probeMySQL(ctx context.Context, target *Target) *ProbeRe
 	}
 	defer conn.Close()
 
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(readTimeout(ctx)))
 
 	header := make([]byte, 4)
 	if _, err := io.ReadFull(conn, header); err != nil {
@@ -159,7 +159,7 @@ func (p *ProtocolProbe) probeRedis(ctx context.Context, target *Target) *ProbeRe
 	addr := p.addr(target)
 	start := time.Now()
 
-	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	conn, err := net.DialTimeout("tcp", addr, dialTimeout(ctx))
 	if err != nil {
 		result := NewResult("protocol", StatusError, fmt.Sprintf("Redis 连接失败: %v", err))
 		result.Protocol = &ProtocolDetails{Type: "redis"}
@@ -167,7 +167,7 @@ func (p *ProtocolProbe) probeRedis(ctx context.Context, target *Target) *ProbeRe
 	}
 	defer conn.Close()
 
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	conn.SetDeadline(time.Now().Add(readTimeout(ctx)))
 
 	_, err = conn.Write([]byte("*1\r\n$4\r\nPING\r\n"))
 	if err != nil {
@@ -219,7 +219,7 @@ func (p *ProtocolProbe) probePostgreSQL(ctx context.Context, target *Target) *Pr
 	addr := p.addr(target)
 	start := time.Now()
 
-	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	conn, err := net.DialTimeout("tcp", addr, dialTimeout(ctx))
 	if err != nil {
 		result := NewResult("protocol", StatusError, fmt.Sprintf("PostgreSQL 连接失败: %v", err))
 		result.Protocol = &ProtocolDetails{Type: "postgresql"}
@@ -227,7 +227,7 @@ func (p *ProtocolProbe) probePostgreSQL(ctx context.Context, target *Target) *Pr
 	}
 	defer conn.Close()
 
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	conn.SetDeadline(time.Now().Add(readTimeout(ctx)))
 
 	user := "probe"
 	database := "postgres"
@@ -297,7 +297,7 @@ func (p *ProtocolProbe) probeSSH(ctx context.Context, target *Target) *ProbeResu
 	addr := p.addr(target)
 	start := time.Now()
 
-	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	conn, err := net.DialTimeout("tcp", addr, dialTimeout(ctx))
 	if err != nil {
 		result := NewResult("protocol", StatusError, fmt.Sprintf("SSH 连接失败: %v", err))
 		result.Protocol = &ProtocolDetails{Type: "ssh"}
@@ -305,7 +305,7 @@ func (p *ProtocolProbe) probeSSH(ctx context.Context, target *Target) *ProbeResu
 	}
 	defer conn.Close()
 
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(readTimeout(ctx)))
 
 	buf := make([]byte, 256)
 	n, err := conn.Read(buf)
@@ -340,7 +340,7 @@ func (p *ProtocolProbe) probeGenericTCP(ctx context.Context, target *Target) *Pr
 	start := time.Now()
 
 	addr := p.addr(target)
-	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	conn, err := net.DialTimeout("tcp", addr, dialTimeout(ctx))
 	if err != nil {
 		elapsed := time.Since(start)
 		result := NewResult("protocol", StatusError, fmt.Sprintf("TCP 重连失败: %v", err))
@@ -350,7 +350,7 @@ func (p *ProtocolProbe) probeGenericTCP(ctx context.Context, target *Target) *Pr
 	}
 	defer conn.Close()
 
-	conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(readTimeout(ctx)))
 	buf := make([]byte, 256)
 	n, _ := conn.Read(buf)
 	if n > 0 {
@@ -374,4 +374,21 @@ func (p *ProtocolProbe) addr(target *Target) string {
 		host = target.IP
 	}
 	return fmt.Sprintf("%s:%d", host, target.Port)
+}
+
+func dialTimeout(ctx context.Context) time.Duration {
+	if deadline, ok := ctx.Deadline(); ok {
+		return time.Until(deadline)
+	}
+	return 10 * time.Second
+}
+
+func readTimeout(ctx context.Context) time.Duration {
+	if deadline, ok := ctx.Deadline(); ok {
+		remaining := time.Until(deadline)
+		if remaining < 5*time.Second {
+			return remaining
+		}
+	}
+	return 5 * time.Second
 }

@@ -23,7 +23,7 @@ func detectProxy(scheme string) string {
 
 	lines := strings.Split(string(out), "\n")
 	var httpEnabled, httpsEnabled bool
-	var httpProxy, httpsProxy string
+	var httpProxy, httpsProxy, httpPort, httpsPort string
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -34,17 +34,29 @@ func detectProxy(scheme string) string {
 			httpsEnabled = true
 		}
 		if strings.HasPrefix(line, "HTTPProxy :") {
-			httpProxy = strings.TrimPrefix(line, "HTTPProxy : ")
+			httpProxy = strings.TrimSpace(strings.TrimPrefix(line, "HTTPProxy :"))
 		}
 		if strings.HasPrefix(line, "HTTPSProxy :") {
-			httpsProxy = strings.TrimPrefix(line, "HTTPSProxy : ")
+			httpsProxy = strings.TrimSpace(strings.TrimPrefix(line, "HTTPSProxy :"))
+		}
+		if strings.HasPrefix(line, "HTTPPort :") {
+			httpPort = strings.TrimSpace(strings.TrimPrefix(line, "HTTPPort :"))
+		}
+		if strings.HasPrefix(line, "HTTPSPort :") {
+			httpsPort = strings.TrimSpace(strings.TrimPrefix(line, "HTTPSPort :"))
 		}
 	}
 
 	if scheme == "https" && httpsEnabled && httpsProxy != "" {
+		if httpsPort != "" && httpsPort != "0" {
+			return httpsProxy + ":" + httpsPort
+		}
 		return httpsProxy
 	}
 	if httpEnabled && httpProxy != "" {
+		if httpPort != "" && httpPort != "0" {
+			return httpProxy + ":" + httpPort
+		}
 		return httpProxy
 	}
 	return ""
