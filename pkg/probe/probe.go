@@ -39,6 +39,7 @@ type ProbeResult struct {
 	Message   string        `json:"message,omitempty"`
 	System    *SystemDetails   `json:"system,omitempty"`
 	DNS       *DNSDetails      `json:"dns,omitempty"`
+	Clash     *ClashDetails    `json:"clash,omitempty"`
 	Conn      *ConnDetails     `json:"conn,omitempty"`
 	TLS       *TLSDetails      `json:"tls,omitempty"`
 	Protocol  *ProtocolDetails `json:"protocol,omitempty"`
@@ -73,6 +74,16 @@ type DNSDetails struct {
 	Consistent     *bool    `json:"consistent,omitempty"`
 	InternalDomain bool     `json:"internal_domain,omitempty"`
 	PublicDNSResult string  `json:"public_dns_result,omitempty"`
+	FakeIP         bool     `json:"fake_ip,omitempty"`
+}
+
+type ClashDetails struct {
+	APIAddr    string   `json:"api_addr"`
+	Available  bool     `json:"available"`
+	Version    string   `json:"version,omitempty"`
+	RealIPs    []string `json:"real_ips,omitempty"`
+	DNSSuccess bool     `json:"dns_success"`
+	DNSError   string   `json:"dns_error,omitempty"`
 }
 
 type ConnDetails struct {

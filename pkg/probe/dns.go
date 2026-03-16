@@ -36,6 +36,9 @@ func (p *DNSProbe) Run(ctx context.Context, target *Target, prev map[string]*Pro
 	for _, ip := range ips {
 		if ip.IP.To4() != nil {
 			details.IPv4 = append(details.IPv4, ip.IP.String())
+			if isFakeIP(ip.IP) {
+				details.FakeIP = true
+			}
 		} else {
 			details.IPv6 = append(details.IPv6, ip.IP.String())
 		}
@@ -65,7 +68,10 @@ func (p *DNSProbe) Run(ctx context.Context, target *Target, prev map[string]*Pro
 		parts = append(parts, "AAAA: 无")
 	}
 
-	if details.InternalDomain {
+	if details.FakeIP {
+		parts = append(parts, "Fake IP ⚠️")
+		result.Status = StatusWarning
+	} else if details.InternalDomain {
 		parts = append(parts, "内部域名")
 		result.Status = StatusWarning
 	} else if details.Consistent != nil && !*details.Consistent {
@@ -116,6 +122,16 @@ func checkDNSConsistency(ctx context.Context, host string, details *DNSDetails) 
 		}
 	}
 	details.Consistent = &consistent
+}
+
+// isFakeIP checks if an IP falls in the 198.18.0.0/15 range used by Clash fake-ip mode.
+func isFakeIP(ip net.IP) bool {
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return false
+	}
+	// 198.18.0.0/15 = 198.18.0.0 ~ 198.19.255.255
+	return ip4[0] == 198 && (ip4[1] == 18 || ip4[1] == 19)
 }
 
 func getSystemDNS() string {

@@ -2,9 +2,14 @@ package diagnosis
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/network-doctor/network-doctor/pkg/probe"
 )
+
+func joinIPs(ips []string) string {
+	return strings.Join(ips, ", ")
+}
 
 type Diagnosis struct {
 	Reachable  bool     `json:"reachable"`
@@ -25,6 +30,20 @@ func Diagnose(results map[string]*probe.ProbeResult) *Diagnosis {
 		}
 	}
 
+	// Clash proxy diagnosis
+	if clash, ok := results["clash"]; ok && clash.Clash != nil {
+		cd := clash.Clash
+		if cd.Available {
+			if !cd.DNSSuccess && cd.DNSError != "" {
+				d.Warnings = append(d.Warnings, fmt.Sprintf("代理侧 DNS 解析失败: %s，目标可能通过代理不可达", cd.DNSError))
+			} else if cd.DNSSuccess && len(cd.RealIPs) > 0 {
+				d.Warnings = append(d.Warnings, fmt.Sprintf("代理侧 DNS 解析成功，真实 IP: %s", joinIPs(cd.RealIPs)))
+			}
+		} else if sys, ok := results["system"]; ok && sys.System != nil && sys.System.TUNName != "" {
+			d.Warnings = append(d.Warnings, "检测到 TUN 设备但无法连接代理 API，诊断结果可能不准确")
+		}
+	}
+
 	if dns, ok := results["dns"]; ok {
 		if dns.Status == probe.StatusError {
 			d.Reachable = false
@@ -33,6 +52,9 @@ func Diagnose(results map[string]*probe.ProbeResult) *Diagnosis {
 			return d
 		}
 		if dns.DNS != nil {
+			if dns.DNS.FakeIP {
+				d.Warnings = append(d.Warnings, "DNS 返回 Fake IP (198.18.x.x)，DNS 被代理接管")
+			}
 			if dns.DNS.InternalDomain {
 				d.Warnings = append(d.Warnings, "内部域名，仅在当前 DNS 可解析")
 			} else if dns.DNS.Consistent != nil && !*dns.DNS.Consistent {

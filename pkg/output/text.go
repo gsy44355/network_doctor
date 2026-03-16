@@ -27,6 +27,7 @@ func (r *TextRenderer) Render(w io.Writer, target string, results []*probe.Probe
 
 	labelMap := map[string]string{
 		"system":   "[系统]",
+		"clash":    "[代理]",
 		"dns":      "[DNS] ",
 		"conn":     "[连通]",
 		"tls":      "[TLS] ",
@@ -34,6 +35,11 @@ func (r *TextRenderer) Render(w io.Writer, target string, results []*probe.Probe
 	}
 
 	for _, result := range results {
+		// Skip the clash probe if it was skipped (no TUN, no config)
+		if result.Name == "clash" && result.Status == probe.StatusSkipped {
+			continue
+		}
+
 		label := labelMap[result.Name]
 
 		if result.Name == "protocol" && result.Protocol != nil {
@@ -85,6 +91,8 @@ func (r *TextRenderer) renderVerbose(w io.Writer, result *probe.ProbeResult) {
 	switch {
 	case result.System != nil && result.System.Route != "":
 		fmt.Fprintf(w, "       路由: %s\n", result.System.Route)
+	case result.Clash != nil && result.Clash.Available:
+		fmt.Fprintf(w, "       API: %s | 版本: %s\n", result.Clash.APIAddr, result.Clash.Version)
 	case result.DNS != nil:
 		if result.DNS.Server != "" {
 			line := "       服务器: " + result.DNS.Server

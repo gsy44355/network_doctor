@@ -9,6 +9,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
+	"github.com/network-doctor/network-doctor/pkg/config"
 	"github.com/network-doctor/network-doctor/pkg/diagnosis"
 	"github.com/network-doctor/network-doctor/pkg/output"
 	"github.com/network-doctor/network-doctor/pkg/probe"
@@ -16,11 +17,13 @@ import (
 )
 
 var (
-	flagJSON    bool
-	flagVerbose bool
-	flagNoColor bool
-	flagTimeout string
-	flagFile    string
+	flagJSON        bool
+	flagVerbose     bool
+	flagNoColor     bool
+	flagTimeout     string
+	flagFile        string
+	flagClashAPI    string
+	flagClashSecret string
 )
 
 var rootCmd = &cobra.Command{
@@ -37,6 +40,8 @@ func init() {
 	rootCmd.Flags().BoolVar(&flagNoColor, "no-color", false, "禁用彩色输出")
 	rootCmd.Flags().StringVar(&flagTimeout, "timeout", "10s", "每个探针的超时时间")
 	rootCmd.Flags().StringVarP(&flagFile, "file", "f", "", "从文件读取目标列表")
+	rootCmd.Flags().StringVar(&flagClashAPI, "clash-api", "", "Clash External Controller 地址 (如 127.0.0.1:9090)")
+	rootCmd.Flags().StringVar(&flagClashSecret, "clash-secret", "", "Clash API 认证密钥")
 }
 
 func run(cmd *cobra.Command, args []string) error {
@@ -77,12 +82,13 @@ func run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("未找到有效的目标地址")
 	}
 
+	cfg := config.Load()
 	exitCode := 0
 
 	if flagJSON && len(targets) > 1 {
 		var batch []output.JSONOutput
 		for _, t := range targets {
-			results, diag := runProbes(t, timeout)
+			results, diag := runProbes(t, timeout, cfg)
 			probeMap := make(map[string]*probe.ProbeResult)
 			for _, r := range results {
 				r.FinalizeStatus()
@@ -110,7 +116,7 @@ func run(cmd *cobra.Command, args []string) error {
 			if i > 0 {
 				fmt.Println()
 			}
-			results, diag := runProbes(t, timeout)
+			results, diag := runProbes(t, timeout, cfg)
 			if flagJSON {
 				renderer := &output.JSONRenderer{}
 				if err := renderer.Render(os.Stdout, t.Raw, results, diag, flagVerbose); err != nil {
@@ -131,9 +137,19 @@ func run(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runProbes(t *probe.Target, timeout time.Duration) ([]*probe.ProbeResult, *diagnosis.Diagnosis) {
+func runProbes(t *probe.Target, timeout time.Duration, cfg *config.Config) ([]*probe.ProbeResult, *diagnosis.Diagnosis) {
+	clashAPI := flagClashAPI
+	clashSecret := flagClashSecret
+	if clashAPI == "" {
+		clashAPI = cfg.ClashAPI
+	}
+	if clashSecret == "" {
+		clashSecret = cfg.ClashSecret
+	}
+
 	probes := []probe.Probe{
 		&probe.SystemProbe{},
+		&probe.ClashProbe{APIAddr: clashAPI, Secret: clashSecret},
 		&probe.DNSProbe{},
 		&probe.ConnProbe{},
 		&probe.TLSProbe{Verbose: flagVerbose},

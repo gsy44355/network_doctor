@@ -132,6 +132,20 @@ network-doctor -f targets.txt
 | `--verbose` | 显示详细信息（证书链、有效期、路由等） |
 | `--no-color` | 禁用彩色输出（也可设置 `NO_COLOR` 环境变量） |
 | `--timeout <duration>` | 每个探针的超时时间，默认 `10s` |
+| `--clash-api <addr>` | Clash External Controller 地址（如 `127.0.0.1:9090`） |
+| `--clash-secret <secret>` | Clash API 认证密钥 |
+
+### 配置文件
+
+支持从 `~/.network_doctor/config` 读取默认配置（文件不存在则忽略，不会自动创建）：
+
+```
+# ~/.network_doctor/config
+clash-api: 127.0.0.1:9090
+clash-secret: your-secret
+```
+
+优先级：命令行参数 > 配置文件 > 自动探测。
 
 ## 输出示例
 
@@ -148,6 +162,32 @@ $ network-doctor https://api.example.com
 
 ✅ 目标可达 (请求经过 TUN 设备 (utun3 (TUN)))
 ```
+
+### 代理环境检测（Clash TUN）
+
+当检测到 TUN 设备时，工具会自动识别 Fake IP 并尝试通过 Clash API 查询代理侧的真实 DNS 解析结果：
+
+```
+$ network-doctor https://api.example.com
+
+[系统] 代理: 无 | TUN: utun0 (TUN) | 出口: utun6
+[代理] Clash (v1.18.0) 代理侧 DNS 解析成功: 93.184.216.34
+[DNS]  198.18.2.225 (0ms) | AAAA: 无 | Fake IP ⚠️
+[连通] TCP:443: ✅ 0ms
+[TLS]  v1.3 | SNI: ✅ | 颁发者: SSL Corporation | 中间人: ✅
+[HTTP] 200 OK (156ms) | Server: cloudflare
+
+✅ 目标可达 (请求经过 TUN 设备 (utun0 (TUN)))
+⚠️  代理侧 DNS 解析成功，真实 IP: 93.184.216.34
+⚠️  DNS 返回 Fake IP (198.18.x.x)，DNS 被代理接管
+```
+
+检测能力：
+
+- **Fake IP 识别**：自动检测 DNS 返回的 `198.18.0.0/15` Fake IP 段，提示 DNS 已被代理接管
+- **Clash API 查询**：通过 Clash External Controller API 获取代理侧的真实 DNS 解析结果
+- **自动发现**：检测到 TUN 设备时自动尝试连接 `127.0.0.1:9090`、`127.0.0.1:9097`
+- **手动配置**：可通过 `--clash-api`/`--clash-secret` 参数或配置文件指定
 
 ### 目标不可达
 
@@ -213,11 +253,12 @@ network-doctor https://api.example.com --json
 | 步骤 | 探针 | 检测内容 |
 |---|---|---|
 | 1 | SystemProbe | 系统代理、TUN 设备、出口接口、路由 |
-| 2 | DNSProbe | A/AAAA 记录、DNS 一致性检查（对比公共 DNS） |
-| 3 | ConnProbe | TCP 连接、连接耗时、失败分类（拒绝/超时/不可达） |
-| 4 | TLSProbe | TLS 握手、SNI 验证、中间人检测（仅 HTTPS） |
-| 5 | ProtocolProbe | 协议层握手（HTTP/MySQL/Redis/PostgreSQL/SSH） |
-| 6 | Diagnosis | 汇总诊断结论 + 建议 |
+| 2 | ClashProbe | 代理 API 探测、代理侧 DNS 解析（检测到 TUN 时自动启用） |
+| 3 | DNSProbe | A/AAAA 记录、Fake IP 检测、DNS 一致性检查（对比公共 DNS） |
+| 4 | ConnProbe | TCP 连接、连接耗时、失败分类（拒绝/超时/不可达） |
+| 5 | TLSProbe | TLS 握手、SNI 验证、中间人检测（仅 HTTPS） |
+| 6 | ProtocolProbe | 协议层握手（HTTP/MySQL/Redis/PostgreSQL/SSH） |
+| 7 | Diagnosis | 汇总诊断结论 + 建议 |
 
 ## 退出码
 
