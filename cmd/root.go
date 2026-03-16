@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/fatih/color"
@@ -24,7 +25,14 @@ var (
 	flagFile        string
 	flagClashAPI    string
 	flagClashSecret string
+	flagConcurrency int
 )
+
+type targetResult struct {
+	target  *probe.Target
+	results []*probe.ProbeResult
+	diag    *diagnosis.Diagnosis
+}
 
 var rootCmd = &cobra.Command{
 	Use:   "network-doctor <target>",
@@ -42,6 +50,7 @@ func init() {
 	rootCmd.Flags().StringVarP(&flagFile, "file", "f", "", "从文件读取目标列表")
 	rootCmd.Flags().StringVar(&flagClashAPI, "clash-api", "", "Clash External Controller 地址 (如 127.0.0.1:9090)")
 	rootCmd.Flags().StringVar(&flagClashSecret, "clash-secret", "", "Clash API 认证密钥")
+	rootCmd.Flags().IntVarP(&flagConcurrency, "concurrency", "c", 5, "并发检测数量")
 }
 
 func run(cmd *cobra.Command, args []string) error {
@@ -85,24 +94,45 @@ func run(cmd *cobra.Command, args []string) error {
 	cfg := config.Load()
 	exitCode := 0
 
+	// 并行探测所有目标
+	allResults := make([]targetResult, len(targets))
+	if len(targets) > 1 {
+		sem := make(chan struct{}, flagConcurrency)
+		var wg sync.WaitGroup
+		for i, t := range targets {
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(idx int, tgt *probe.Target) {
+				defer wg.Done()
+				defer func() { <-sem }()
+				results, diag := runProbes(tgt, timeout, cfg)
+				allResults[idx] = targetResult{target: tgt, results: results, diag: diag}
+			}(i, t)
+		}
+		wg.Wait()
+	} else {
+		results, diag := runProbes(targets[0], timeout, cfg)
+		allResults[0] = targetResult{target: targets[0], results: results, diag: diag}
+	}
+
+	// 输出结果
 	if flagJSON && len(targets) > 1 {
 		var batch []output.JSONOutput
-		for _, t := range targets {
-			results, diag := runProbes(t, timeout, cfg)
+		for _, tr := range allResults {
 			probeMap := make(map[string]*probe.ProbeResult)
-			for _, r := range results {
+			for _, r := range tr.results {
 				r.FinalizeStatus()
 				probeMap[r.Name] = r
 			}
 			batch = append(batch, output.JSONOutput{
-				Target:     t.Raw,
-				Reachable:  diag.Reachable,
+				Target:     tr.target.Raw,
+				Reachable:  tr.diag.Reachable,
 				Probes:     probeMap,
-				Diagnosis:  diag.Summary,
-				Suggestion: diag.Suggestion,
-				Warnings:   diag.Warnings,
+				Diagnosis:  tr.diag.Summary,
+				Suggestion: tr.diag.Suggestion,
+				Warnings:   tr.diag.Warnings,
 			})
-			if !diag.Reachable {
+			if !tr.diag.Reachable {
 				exitCode = 1
 			}
 		}
@@ -112,22 +142,24 @@ func run(cmd *cobra.Command, args []string) error {
 			os.Exit(2)
 		}
 	} else {
-		for i, t := range targets {
-			if i > 0 {
-				fmt.Println()
+		for i, tr := range allResults {
+			if len(targets) > 1 {
+				if i > 0 {
+					fmt.Println()
+				}
+				fmt.Fprintf(os.Stdout, "──── %s ────\n", tr.target.Raw)
 			}
-			results, diag := runProbes(t, timeout, cfg)
 			if flagJSON {
 				renderer := &output.JSONRenderer{}
-				if err := renderer.Render(os.Stdout, t.Raw, results, diag, flagVerbose); err != nil {
+				if err := renderer.Render(os.Stdout, tr.target.Raw, tr.results, tr.diag, flagVerbose); err != nil {
 					fmt.Fprintf(os.Stderr, "JSON 输出错误: %v\n", err)
 					os.Exit(2)
 				}
 			} else {
 				renderer := &output.TextRenderer{NoColor: flagNoColor}
-				renderer.Render(os.Stdout, t.Raw, results, diag, flagVerbose)
+				renderer.Render(os.Stdout, tr.target.Raw, tr.results, tr.diag, flagVerbose)
 			}
-			if !diag.Reachable {
+			if !tr.diag.Reachable {
 				exitCode = 1
 			}
 		}

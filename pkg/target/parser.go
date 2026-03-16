@@ -39,7 +39,11 @@ func parseURI(t *probe.Target, raw string) error {
 	if err != nil {
 		return fmt.Errorf("无法解析目标地址: %s", raw)
 	}
-	t.Scheme = strings.ToLower(u.Scheme)
+	scheme := strings.ToLower(u.Scheme)
+	if idx := strings.Index(scheme, "+"); idx != -1 {
+		scheme = scheme[:idx]
+	}
+	t.Scheme = scheme
 	host := u.Hostname()
 	portStr := u.Port()
 	if portStr != "" {
