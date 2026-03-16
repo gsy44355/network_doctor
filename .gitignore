@@ -21,3 +21,4 @@ dist/
 *.dylib
 *.test
 *.out
+.env
