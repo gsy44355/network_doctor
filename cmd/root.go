@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fatih/color"
@@ -96,7 +97,10 @@ func run(cmd *cobra.Command, args []string) error {
 
 	// 并行探测所有目标
 	allResults := make([]targetResult, len(targets))
+	showProgress := flagFile != "" && len(targets) > 1 && !flagJSON
 	if len(targets) > 1 {
+		var completed int64
+		total := len(targets)
 		sem := make(chan struct{}, flagConcurrency)
 		var wg sync.WaitGroup
 		for i, t := range targets {
@@ -107,6 +111,13 @@ func run(cmd *cobra.Command, args []string) error {
 				defer func() { <-sem }()
 				results, diag := runProbes(tgt, timeout, cfg)
 				allResults[idx] = targetResult{target: tgt, results: results, diag: diag}
+				if showProgress {
+					n := atomic.AddInt64(&completed, 1)
+					fmt.Fprintf(os.Stderr, "\r[%d/%d] 检测完成", n, total)
+					if n == int64(total) {
+						fmt.Fprintln(os.Stderr)
+					}
+				}
 			}(i, t)
 		}
 		wg.Wait()

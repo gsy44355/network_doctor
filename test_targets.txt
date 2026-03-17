@@ -1,0 +1,129 @@
+# 常见网站
+https://www.google.com
+https://www.baidu.com
+https://www.bing.com
+https://www.yahoo.com
+https://www.github.com
+https://www.gitlab.com
+https://www.stackoverflow.com
+https://www.wikipedia.org
+https://www.amazon.com
+https://www.apple.com
+
+# 国内常用
+https://www.taobao.com
+https://www.jd.com
+https://www.bilibili.com
+https://www.zhihu.com
+https://www.douban.com
+https://www.weibo.com
+https://www.163.com
+https://www.qq.com
+https://www.sohu.com
+https://www.sina.com.cn
+
+# 开发者工具/平台
+https://www.npmjs.com
+https://pypi.org
+https://hub.docker.com
+https://registry.npmjs.org
+https://api.github.com
+https://raw.githubusercontent.com
+https://pkg.go.dev
+https://crates.io
+https://rubygems.org
+https://maven.apache.org
+
+# 云服务
+https://aws.amazon.com
+https://cloud.google.com
+https://azure.microsoft.com
+https://www.aliyun.com
+https://cloud.tencent.com
+https://www.huaweicloud.com
+https://www.digitalocean.com
+https://www.cloudflare.com
+https://www.heroku.com
+https://vercel.com
+
+# CDN / DNS
+https://cdn.jsdelivr.net
+https://cdnjs.cloudflare.com
+https://unpkg.com
+1.1.1.1:443
+8.8.8.8:443
+208.67.222.222:443
+https://dns.google
+https://cloudflare-dns.com
+https://dns.alidns.com
+https://doh.pub
+
+# HTTP (非TLS)
+http://httpbin.org
+http://example.com
+http://neverssl.com
+http://httpforever.com
+http://www.baidu.com
+
+# 数据库端口 (自动推断协议)
+localhost:3306
+localhost:5432
+localhost:6379
+127.0.0.1:3306
+127.0.0.1:5432
+127.0.0.1:6379
+
+# SSH
+localhost:22
+github.com:22
+gitlab.com:22
+
+# 邮件服务
+smtp.gmail.com:465
+smtp.qq.com:465
+smtp.163.com:465
+imap.gmail.com:993
+imap.qq.com:993
+
+# 可能不可达的目标 (测试失败场景)
+https://thisdomaindoesnotexist12345.com
+https://expired.badssl.com
+https://wrong.host.badssl.com
+https://self-signed.badssl.com
+https://untrusted-root.badssl.com
+192.0.2.1:80
+10.255.255.1:443
+https://httpstat.us/500
+
+# 特殊端口
+www.google.com:8080
+www.baidu.com:8443
+localhost:8080
+localhost:3000
+localhost:9090
+
+# AI/ML 平台
+https://openai.com
+https://anthropic.com
+https://huggingface.co
+https://www.kaggle.com
+https://colab.research.google.com
+
+# 社交媒体
+https://twitter.com
+https://www.reddit.com
+https://www.linkedin.com
+https://www.facebook.com
+https://www.instagram.com
+
+# 技术文档/博客
+https://docs.python.org
+https://go.dev
+https://nodejs.org
+https://www.rust-lang.org
+https://developer.mozilla.org
+https://docs.docker.com
+https://kubernetes.io
+https://www.terraform.io
+https://grafana.com
+https://prometheus.io
