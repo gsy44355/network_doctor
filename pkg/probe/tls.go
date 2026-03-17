@@ -76,7 +76,7 @@ func (p *TLSProbe) Run(ctx context.Context, target *Target, prev map[string]*Pro
 		}
 		details.SNIMatch = verifySNI(cert, serverName)
 
-		mitm, mitmDetail := detectMITM(cert)
+		mitm, mitmDetail := detectMITM(cert, state.PeerCertificates[1:])
 		details.MITM = mitm
 		details.MITMDetail = mitmDetail
 
@@ -128,7 +128,7 @@ func verifySNI(cert *x509.Certificate, serverName string) bool {
 	return cert.VerifyHostname(serverName) == nil
 }
 
-func detectMITM(cert *x509.Certificate) (bool, string) {
+func detectMITM(cert *x509.Certificate, intermediates []*x509.Certificate) (bool, string) {
 	// Self-signed: Issuer and Subject are identical
 	if cert.Issuer.String() == cert.Subject.String() {
 		return true, "自签名证书"
@@ -146,7 +146,15 @@ func detectMITM(cert *x509.Certificate) (bool, string) {
 	}
 
 	// Check if cert is issued by a non-public CA (not in system trust store)
-	opts := x509.VerifyOptions{DNSName: ""}
+	// Must include intermediate certificates for proper chain verification
+	pool := x509.NewCertPool()
+	for _, ic := range intermediates {
+		pool.AddCert(ic)
+	}
+	opts := x509.VerifyOptions{
+		DNSName:       "",
+		Intermediates: pool,
+	}
 	if _, err := cert.Verify(opts); err != nil {
 		if _, ok := err.(x509.UnknownAuthorityError); ok {
 			return true, "非公共 CA 签发"
