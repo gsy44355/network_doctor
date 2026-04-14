@@ -3,6 +3,7 @@ package probe
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -374,6 +375,72 @@ func (p *ProtocolProbe) addr(target *Target) string {
 		host = target.IP
 	}
 	return fmt.Sprintf("%s:%d", host, target.Port)
+}
+
+// queryClashConnections queries Clash API /connections and finds the connection
+// matching the given host and port. Returns the proxy chain and whether a match was found.
+func queryClashConnections(ctx context.Context, apiAddr, secret, host string, port int) ([]string, bool) {
+	client := &http.Client{
+		Timeout: 3 * time.Second,
+		Transport: &http.Transport{
+			DialContext: (&net.Dialer{Timeout: 2 * time.Second}).DialContext,
+		},
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", "http://"+apiAddr+"/connections", nil)
+	if err != nil {
+		return nil, false
+	}
+	if secret != "" {
+		req.Header.Set("Authorization", "Bearer "+secret)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, false
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, false
+	}
+
+	return parseClashConnections(body, host, port)
+}
+
+// parseClashConnections parses the Clash /connections JSON response and finds
+// a connection matching host:port. Matches against metadata.host or metadata.destinationIP.
+func parseClashConnections(data []byte, host string, port int) ([]string, bool) {
+	var resp struct {
+		Connections []struct {
+			Metadata struct {
+				Host            string `json:"host"`
+				DestinationPort string `json:"destinationPort"`
+				DestinationIP   string `json:"destinationIP"`
+			} `json:"metadata"`
+			Chains []string `json:"chains"`
+		} `json:"connections"`
+	}
+
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, false
+	}
+
+	portStr := fmt.Sprintf("%d", port)
+	for _, conn := range resp.Connections {
+		if conn.Metadata.DestinationPort != portStr {
+			continue
+		}
+		if conn.Metadata.Host == host || conn.Metadata.DestinationIP == host {
+			return conn.Chains, true
+		}
+	}
+	return nil, false
 }
 
 func dialTimeout(ctx context.Context) time.Duration {
