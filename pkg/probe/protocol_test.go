@@ -35,6 +35,20 @@ func TestProtocolProbe_SkipsWhenTCPFailed(t *testing.T) {
 	}
 }
 
+func TestProtocolDetails_ProxyRelayFields(t *testing.T) {
+	details := &ProtocolDetails{
+		Type:             "http",
+		ProxyRelayFailed: true,
+		ProxyChain:       []string{"Proxy", "HK-Node"},
+	}
+	if !details.ProxyRelayFailed {
+		t.Error("ProxyRelayFailed should be true")
+	}
+	if len(details.ProxyChain) != 2 || details.ProxyChain[0] != "Proxy" {
+		t.Error("ProxyChain should contain [Proxy, HK-Node]")
+	}
+}
+
 func TestProtocolProbe_GenericTCP(t *testing.T) {
 	p := &ProtocolProbe{}
 	target := &Target{Scheme: "tcp", Host: "example.com", Port: 8080}

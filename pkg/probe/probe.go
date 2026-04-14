@@ -105,11 +105,13 @@ type TLSDetails struct {
 }
 
 type ProtocolDetails struct {
-	Type         string `json:"type"`
-	StatusCode   int    `json:"status_code,omitempty"`
-	Version      string `json:"version,omitempty"`
-	Banner       string `json:"banner,omitempty"`
-	AuthRequired bool   `json:"auth_required,omitempty"`
+	Type             string   `json:"type"`
+	StatusCode       int      `json:"status_code,omitempty"`
+	Version          string   `json:"version,omitempty"`
+	Banner           string   `json:"banner,omitempty"`
+	AuthRequired     bool     `json:"auth_required,omitempty"`
+	ProxyRelayFailed bool     `json:"proxy_relay_failed,omitempty"`
+	ProxyChain       []string `json:"proxy_chain,omitempty"`
 }
 
 type Probe interface {
