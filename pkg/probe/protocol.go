@@ -402,12 +402,22 @@ func (p *ProtocolProbe) probeGenericTCP(ctx context.Context, target *Target) *Pr
 
 	conn.SetReadDeadline(time.Now().Add(readTimeout(ctx)))
 	buf := make([]byte, 256)
-	n, _ := conn.Read(buf)
+	n, readErr := conn.Read(buf)
 	if n > 0 {
 		details.Banner = strings.TrimSpace(string(buf[:n]))
 	}
 
 	elapsed := time.Since(start)
+
+	// If read returned EOF or connection reset (not timeout), the remote end
+	// closed the connection immediately — this is an error, not success.
+	if readErr != nil && n == 0 && !isTimeoutError(readErr) {
+		result := NewResult("protocol", StatusError, fmt.Sprintf("TCP 连接后立即断开: %v", readErr))
+		result.SetDuration(elapsed)
+		result.Protocol = details
+		return result
+	}
+
 	msg := "TCP 连接成功"
 	if details.Banner != "" {
 		msg += " | Banner: " + details.Banner
@@ -501,6 +511,14 @@ func looksLikeProxyRelayFailure(errMsg string) bool {
 	return strings.Contains(lower, "eof") ||
 		strings.Contains(lower, "empty") ||
 		strings.Contains(lower, "connection reset")
+}
+
+// isTimeoutError checks if an error is a network timeout (as opposed to EOF/reset).
+func isTimeoutError(err error) bool {
+	if netErr, ok := err.(net.Error); ok {
+		return netErr.Timeout()
+	}
+	return false
 }
 
 func dialTimeout(ctx context.Context) time.Duration {
