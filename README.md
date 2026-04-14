@@ -186,8 +186,32 @@ $ network-doctor https://api.example.com
 
 - **Fake IP 识别**：自动检测 DNS 返回的 `198.18.0.0/15` Fake IP 段，提示 DNS 已被代理接管
 - **Clash API 查询**：通过 Clash External Controller API 获取代理侧的真实 DNS 解析结果
+- **代理转发失败检测**：TUN 模式下 TCP 握手与本地代理完成，但代理无法转发到真实目标时，准确识别为"代理转发失败"而非误报为"可达"
 - **自动发现**：检测到 TUN 设备时自动尝试连接 `127.0.0.1:9090`、`127.0.0.1:9097`
 - **手动配置**：可通过 `--clash-api`/`--clash-secret` 参数或配置文件指定
+
+### 代理转发失败（TUN 模式下目标不可达）
+
+当使用 Clash 等透明代理（TUN 模式）时，TCP 连接实际上是与本地 TUN 接口完成的。如果代理无法将流量转发到真实目标，工具会准确检测并报告：
+
+```
+$ network-doctor 172.36.8.81:8888
+
+[系统] 代理: 无 | TUN: utun0 (TUN) | 出口: utun5
+[代理] Clash API 可用 (127.0.0.1:9090)
+[DNS]  目标为 IP 地址，跳过 DNS 解析
+[连通] TCP:8888: ✅ 0ms
+[TLS]  非 TLS 协议，跳过
+[TCP] TCP 发送数据后连接断开: EOF
+
+❌ 不可达: TCP:8888 通过代理连接成功，但代理转发到目标失败（目标不可达）
+   建议: 1. 检查代理节点是否能访问该目标  2. 尝试切换代理节点或使用直连规则  3. 确认目标地址和端口是否正确
+```
+
+检测方式（两层）：
+
+1. **Clash API 精确检测**：通过 `/connections` 端点查询代理连接状态和代理链路（如有 Clash API 可用）
+2. **行为推断兜底**：TUN 活跃时，协议握手收到 EOF/连接重置则推断为代理转发失败（无需 Clash API）
 
 ### 目标不可达
 
@@ -257,7 +281,7 @@ network-doctor https://api.example.com --json
 | 3 | DNSProbe | A/AAAA 记录、Fake IP 检测、DNS 一致性检查（对比公共 DNS） |
 | 4 | ConnProbe | TCP 连接、连接耗时、失败分类（拒绝/超时/不可达） |
 | 5 | TLSProbe | TLS 握手、SNI 验证、中间人检测（仅 HTTPS） |
-| 6 | ProtocolProbe | 协议层握手（HTTP/MySQL/Redis/PostgreSQL/SSH） |
+| 6 | ProtocolProbe | 协议层握手（HTTP/MySQL/Redis/PostgreSQL/SSH）+ TUN 代理转发失败检测 |
 | 7 | Diagnosis | 汇总诊断结论 + 建议 |
 
 ## 退出码
