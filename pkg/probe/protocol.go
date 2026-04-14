@@ -34,7 +34,7 @@ func (p *ProtocolProbe) Run(ctx context.Context, target *Target, prev map[string
 	case "ssh":
 		result = p.probeSSH(ctx, target)
 	default:
-		result = p.probeGenericTCP(ctx, target)
+		result = p.probeGenericTCP(ctx, target, prev)
 	}
 
 	// Proxy relay failure detection: only when TUN is active and protocol probe failed
@@ -385,7 +385,7 @@ func (p *ProtocolProbe) probeSSH(ctx context.Context, target *Target) *ProbeResu
 	return result
 }
 
-func (p *ProtocolProbe) probeGenericTCP(ctx context.Context, target *Target) *ProbeResult {
+func (p *ProtocolProbe) probeGenericTCP(ctx context.Context, target *Target, prev map[string]*ProbeResult) *ProbeResult {
 	details := &ProtocolDetails{Type: "tcp"}
 	start := time.Now()
 
@@ -407,17 +407,37 @@ func (p *ProtocolProbe) probeGenericTCP(ctx context.Context, target *Target) *Pr
 		details.Banner = strings.TrimSpace(string(buf[:n]))
 	}
 
-	elapsed := time.Since(start)
-
 	// If read returned EOF or connection reset (not timeout), the remote end
-	// closed the connection immediately — this is an error, not success.
+	// closed the connection immediately — this is an error.
 	if readErr != nil && n == 0 && !isTimeoutError(readErr) {
+		elapsed := time.Since(start)
 		result := NewResult("protocol", StatusError, fmt.Sprintf("TCP 连接后立即断开: %v", readErr))
 		result.SetDuration(elapsed)
 		result.Protocol = details
 		return result
 	}
 
+	// When TUN is active and initial read timed out (no banner), the proxy may
+	// be holding the connection open waiting for data. Send a probe payload and
+	// read again — if the proxy fails to relay, it will close the connection (EOF).
+	tunActive, _, _, _ := tunInfo(prev)
+	if tunActive && readErr != nil && isTimeoutError(readErr) && n == 0 {
+		conn.Write([]byte("\r\n"))
+		conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+		n2, readErr2 := conn.Read(buf)
+		if readErr2 != nil && n2 == 0 && !isTimeoutError(readErr2) {
+			elapsed := time.Since(start)
+			result := NewResult("protocol", StatusError, fmt.Sprintf("TCP 发送数据后连接断开: %v", readErr2))
+			result.SetDuration(elapsed)
+			result.Protocol = details
+			return result
+		}
+		if n2 > 0 {
+			details.Banner = strings.TrimSpace(string(buf[:n2]))
+		}
+	}
+
+	elapsed := time.Since(start)
 	msg := "TCP 连接成功"
 	if details.Banner != "" {
 		msg += " | Banner: " + details.Banner
