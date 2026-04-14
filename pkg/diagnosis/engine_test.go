@@ -1,6 +1,7 @@
 package diagnosis
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/network-doctor/network-doctor/pkg/probe"
@@ -108,5 +109,60 @@ func TestDiagnose_InternalDomain(t *testing.T) {
 	}
 	if !found {
 		t.Error("should warn about internal domain")
+	}
+}
+
+func TestDiagnose_ProxyRelayFailed_WithChain(t *testing.T) {
+	results := map[string]*probe.ProbeResult{
+		"system":   {Name: "system", Status: probe.StatusOK, System: &probe.SystemDetails{TUN: "utun3 (Clash)", TUNName: "utun3"}},
+		"clash":    {Name: "clash", Status: probe.StatusOK, Clash: &probe.ClashDetails{Available: true, APIAddr: "127.0.0.1:9090"}},
+		"dns":      {Name: "dns", Status: probe.StatusOK},
+		"conn":     {Name: "conn", Status: probe.StatusOK, Conn: &probe.ConnDetails{Port: 8888}},
+		"protocol": {Name: "protocol", Status: probe.StatusError, Protocol: &probe.ProtocolDetails{Type: "http", ProxyRelayFailed: true, ProxyChain: []string{"Proxy", "HK-Node"}}},
+	}
+	d := Diagnose(results)
+	if d.Reachable {
+		t.Error("should not be reachable when proxy relay fails")
+	}
+	if !strings.Contains(d.Summary, "代理转发") {
+		t.Errorf("summary should mention proxy relay, got: %s", d.Summary)
+	}
+	if !strings.Contains(d.Suggestion, "HK-Node") {
+		t.Errorf("suggestion should mention proxy chain node, got: %s", d.Suggestion)
+	}
+}
+
+func TestDiagnose_ProxyRelayFailed_NoChain(t *testing.T) {
+	results := map[string]*probe.ProbeResult{
+		"system":   {Name: "system", Status: probe.StatusOK, System: &probe.SystemDetails{TUN: "utun3 (Clash)", TUNName: "utun3"}},
+		"dns":      {Name: "dns", Status: probe.StatusOK},
+		"conn":     {Name: "conn", Status: probe.StatusOK, Conn: &probe.ConnDetails{Port: 443}},
+		"protocol": {Name: "protocol", Status: probe.StatusError, Protocol: &probe.ProtocolDetails{Type: "http", ProxyRelayFailed: true}},
+	}
+	d := Diagnose(results)
+	if d.Reachable {
+		t.Error("should not be reachable when proxy relay fails")
+	}
+	if !strings.Contains(d.Summary, "代理转发") {
+		t.Errorf("summary should mention proxy relay, got: %s", d.Summary)
+	}
+	if d.Suggestion == "" {
+		t.Error("should have suggestion for proxy relay failure")
+	}
+}
+
+func TestDiagnose_ProtocolError_NotProxyRelay(t *testing.T) {
+	results := map[string]*probe.ProbeResult{
+		"system":   {Name: "system", Status: probe.StatusOK},
+		"dns":      {Name: "dns", Status: probe.StatusOK},
+		"conn":     {Name: "conn", Status: probe.StatusOK},
+		"protocol": {Name: "protocol", Status: probe.StatusError, Protocol: &probe.ProtocolDetails{Type: "http", ProxyRelayFailed: false}},
+	}
+	d := Diagnose(results)
+	if d.Reachable {
+		t.Error("should not be reachable")
+	}
+	if strings.Contains(d.Summary, "代理转发") {
+		t.Error("summary should NOT mention proxy relay for non-proxy errors")
 	}
 }

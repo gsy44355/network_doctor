@@ -112,8 +112,21 @@ func Diagnose(results map[string]*probe.ProbeResult) *Diagnosis {
 	if proto, ok := results["protocol"]; ok {
 		if proto.Status == probe.StatusError {
 			d.Reachable = false
-			d.Summary = "TCP 连通但协议握手失败，可能被代理拦截或服务异常"
-			d.Suggestion = "检查目标服务是否正常运行，或是否有代理/防火墙拦截应用层协议"
+			if proto.Protocol != nil && proto.Protocol.ProxyRelayFailed {
+				port := 0
+				if conn, ok := results["conn"]; ok && conn.Conn != nil {
+					port = conn.Conn.Port
+				}
+				d.Summary = fmt.Sprintf("TCP:%d 通过代理连接成功，但代理转发到目标失败（目标不可达）", port)
+				if len(proto.Protocol.ProxyChain) > 0 {
+					d.Suggestion = fmt.Sprintf("当前代理链路: %s，建议切换其他节点或添加直连规则", strings.Join(proto.Protocol.ProxyChain, " → "))
+				} else {
+					d.Suggestion = "1. 检查代理节点是否能访问该目标  2. 尝试切换代理节点或使用直连规则  3. 确认目标地址和端口是否正确"
+				}
+			} else {
+				d.Summary = "TCP 连通但协议握手失败，可能被代理拦截或服务异常"
+				d.Suggestion = "检查目标服务是否正常运行，或是否有代理/防火墙拦截应用层协议"
+			}
 			return d
 		}
 		if proto.Protocol != nil && proto.Protocol.AuthRequired {
