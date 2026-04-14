@@ -56,6 +56,7 @@ func tunInfo(prev map[string]*ProbeResult) (tunActive bool, clashAvailable bool,
 	if clash, ok := prev["clash"]; ok && clash.Clash != nil && clash.Clash.Available {
 		clashAvailable = true
 		clashAPIAddr = clash.Clash.APIAddr
+		clashSecret = clash.Clash.Secret
 	}
 	return
 }

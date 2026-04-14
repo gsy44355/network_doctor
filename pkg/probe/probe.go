@@ -84,6 +84,7 @@ type ClashDetails struct {
 	RealIPs    []string `json:"real_ips,omitempty"`
 	DNSSuccess bool     `json:"dns_success"`
 	DNSError   string   `json:"dns_error,omitempty"`
+	Secret     string   `json:"-"`
 }
 
 type ConnDetails struct {

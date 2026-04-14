@@ -41,6 +41,7 @@ func (p *ClashProbe) Run(ctx context.Context, target *Target, prev map[string]*P
 	}
 	details.APIAddr = apiAddr
 	details.Available = true
+	details.Secret = p.Secret
 
 	// Get version
 	details.Version = p.getVersion(ctx, apiAddr)
