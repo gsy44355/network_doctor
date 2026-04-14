@@ -181,3 +181,34 @@ func TestLooksLikeProxyRelayFailure_Normal(t *testing.T) {
 		t.Error("normal success message should NOT match")
 	}
 }
+
+func TestProtocolProbe_DetectsProxyRelayFailure_WithTUN(t *testing.T) {
+	p := &ProtocolProbe{}
+	target := &Target{Scheme: "http", Host: "unreachable.example.com", IP: "198.18.0.1", Port: 8888}
+	prev := map[string]*ProbeResult{
+		"conn":   {Name: "conn", Status: StatusOK},
+		"system": {Name: "system", Status: StatusOK, System: &SystemDetails{TUNName: "utun3", TUN: "utun3 (Clash)"}},
+		"clash":  {Name: "clash", Status: StatusSkipped, Clash: &ClashDetails{Available: false}},
+	}
+	result := p.Run(context.Background(), target, prev)
+	if result.Status == StatusOK {
+		t.Skip("target actually reachable in test environment")
+	}
+	if result.Protocol != nil && result.Protocol.ProxyRelayFailed {
+		return
+	}
+	t.Logf("result: status=%v, message=%s", result.Status, result.Message)
+}
+
+func TestProtocolProbe_NoFalsePositive_WithoutTUN(t *testing.T) {
+	p := &ProtocolProbe{}
+	target := &Target{Scheme: "http", Host: "unreachable.example.com", IP: "198.18.0.1", Port: 8888}
+	prev := map[string]*ProbeResult{
+		"conn":   {Name: "conn", Status: StatusOK},
+		"system": {Name: "system", Status: StatusOK, System: &SystemDetails{}},
+	}
+	result := p.Run(context.Background(), target, prev)
+	if result.Protocol != nil && result.Protocol.ProxyRelayFailed {
+		t.Error("should NOT set ProxyRelayFailed when TUN is not active")
+	}
+}

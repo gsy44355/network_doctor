@@ -21,19 +21,67 @@ func (p *ProtocolProbe) Run(ctx context.Context, target *Target, prev map[string
 		return NewResult("protocol", StatusSkipped, "⏭️ 跳过 (TCP 不通)")
 	}
 
+	var result *ProbeResult
 	switch target.Scheme {
 	case "http", "https":
-		return p.probeHTTP(ctx, target)
+		result = p.probeHTTP(ctx, target)
 	case "mysql":
-		return p.probeMySQL(ctx, target)
+		result = p.probeMySQL(ctx, target)
 	case "redis":
-		return p.probeRedis(ctx, target)
+		result = p.probeRedis(ctx, target)
 	case "postgresql":
-		return p.probePostgreSQL(ctx, target)
+		result = p.probePostgreSQL(ctx, target)
 	case "ssh":
-		return p.probeSSH(ctx, target)
+		result = p.probeSSH(ctx, target)
 	default:
-		return p.probeGenericTCP(ctx, target)
+		result = p.probeGenericTCP(ctx, target)
+	}
+
+	// Proxy relay failure detection: only when TUN is active and protocol probe failed
+	if result.Status == StatusError && result.Protocol != nil {
+		tunActive, clashAvailable, clashAPIAddr, clashSecret := tunInfo(prev)
+		if tunActive {
+			p.detectProxyRelayFailure(ctx, result, target, tunActive, clashAvailable, clashAPIAddr, clashSecret)
+		}
+	}
+
+	return result
+}
+
+// tunInfo extracts TUN active status and Clash API details from previous probe results.
+func tunInfo(prev map[string]*ProbeResult) (tunActive bool, clashAvailable bool, clashAPIAddr string, clashSecret string) {
+	if sys, ok := prev["system"]; ok && sys.System != nil && sys.System.TUNName != "" {
+		tunActive = true
+	}
+	if clash, ok := prev["clash"]; ok && clash.Clash != nil && clash.Clash.Available {
+		clashAvailable = true
+		clashAPIAddr = clash.Clash.APIAddr
+	}
+	return
+}
+
+// detectProxyRelayFailure checks if a protocol probe failure is caused by proxy relay failure.
+// It uses two layers: (1) Clash API /connections query for precise detection,
+// (2) EOF/connection-reset behavior inference as fallback.
+func (p *ProtocolProbe) detectProxyRelayFailure(ctx context.Context, result *ProbeResult, target *Target, tunActive, clashAvailable bool, clashAPIAddr, clashSecret string) {
+	host := target.Host
+	if host == "" {
+		host = target.IP
+	}
+
+	// Layer 1: Clash API query
+	if clashAvailable {
+		chain, found := queryClashConnections(ctx, clashAPIAddr, clashSecret, host, target.Port)
+		if found {
+			result.Protocol.ProxyChain = chain
+			result.Protocol.ProxyRelayFailed = true
+			return
+		}
+	}
+
+	// Layer 2: Behavioral inference — check if the error looks like a proxy relay failure
+	if looksLikeProxyRelayFailure(result.Message) {
+		result.Protocol.ProxyRelayFailed = true
 	}
 }
 
