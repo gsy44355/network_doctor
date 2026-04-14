@@ -443,6 +443,17 @@ func parseClashConnections(data []byte, host string, port int) ([]string, bool) 
 	return nil, false
 }
 
+// looksLikeProxyRelayFailure checks if a protocol probe error message matches
+// the pattern of a proxy relay failure. When a TUN proxy accepts a TCP connection
+// but fails to forward it to the real target, it typically closes the connection
+// immediately, resulting in EOF, empty reply, or connection reset errors.
+func looksLikeProxyRelayFailure(errMsg string) bool {
+	lower := strings.ToLower(errMsg)
+	return strings.Contains(lower, "eof") ||
+		strings.Contains(lower, "empty") ||
+		strings.Contains(lower, "connection reset")
+}
+
 func dialTimeout(ctx context.Context) time.Duration {
 	if deadline, ok := ctx.Deadline(); ok {
 		return time.Until(deadline)

@@ -151,3 +151,33 @@ func TestProtocolProbe_GenericTCP(t *testing.T) {
 		t.Errorf("type = %q, want tcp", result.Protocol.Type)
 	}
 }
+
+func TestLooksLikeProxyRelayFailure_EOF(t *testing.T) {
+	if !looksLikeProxyRelayFailure("HTTP 请求失败: EOF") {
+		t.Error("message containing EOF should match")
+	}
+}
+
+func TestLooksLikeProxyRelayFailure_EmptyReply(t *testing.T) {
+	if !looksLikeProxyRelayFailure("HTTP 请求失败: empty reply from server") {
+		t.Error("message containing 'empty' should match")
+	}
+}
+
+func TestLooksLikeProxyRelayFailure_ConnectionReset(t *testing.T) {
+	if !looksLikeProxyRelayFailure("MySQL 握手失败: connection reset by peer") {
+		t.Error("message containing 'connection reset' should match")
+	}
+}
+
+func TestLooksLikeProxyRelayFailure_Timeout(t *testing.T) {
+	if looksLikeProxyRelayFailure("TCP 连接超时: i/o timeout") {
+		t.Error("timeout should NOT match proxy relay failure")
+	}
+}
+
+func TestLooksLikeProxyRelayFailure_Normal(t *testing.T) {
+	if looksLikeProxyRelayFailure("HTTP 200 OK (50ms)") {
+		t.Error("normal success message should NOT match")
+	}
+}
