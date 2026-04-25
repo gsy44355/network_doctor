@@ -2,6 +2,12 @@ package probe
 
 import (
 	"context"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -21,6 +27,117 @@ func TestProtocolProbe_HTTP(t *testing.T) {
 	if result.Protocol.Type != "http" {
 		t.Errorf("type = %q, want http", result.Protocol.Type)
 	}
+}
+
+func targetFromURL(raw string) (*Target, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, err
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		return nil, err
+	}
+	host := u.Hostname()
+	t := &Target{Raw: raw, Scheme: u.Scheme, Host: host, Port: port}
+	if ip := net.ParseIP(host); ip != nil {
+		t.IP = ip.String()
+		t.Host = ""
+		t.IsIP = true
+	}
+	return t, nil
+}
+
+func TestProtocolProbeHTTPFallsBackToGETWhenHeadUnsupported(t *testing.T) {
+	var seenGet bool
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodHead {
+			return &http.Response{
+				StatusCode: http.StatusMethodNotAllowed,
+				Status:     "405 Method Not Allowed",
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader("")),
+				Request:    r,
+			}, nil
+		}
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET fallback", r.Method)
+		}
+		if got := r.Header.Get("Range"); got != "bytes=0-0" {
+			t.Fatalf("Range = %q, want bytes=0-0", got)
+		}
+		seenGet = true
+		return &http.Response{
+			StatusCode: http.StatusPartialContent,
+			Status:     "206 Partial Content",
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("x")),
+			Request:    r,
+		}, nil
+	})}
+	target := &Target{Raw: "http://example.com", Scheme: "http", Host: "example.com", Port: 80}
+	p := &ProtocolProbe{HTTPClient: client}
+
+	result := p.probeHTTP(context.Background(), target)
+
+	if !seenGet {
+		t.Fatal("GET fallback was not sent")
+	}
+	if result.Status != StatusOK {
+		t.Fatalf("status = %v, message = %s", result.Status, result.Message)
+	}
+	if result.Protocol.Method != http.MethodGet {
+		t.Fatalf("method = %q, want GET fallback", result.Protocol.Method)
+	}
+	if result.Protocol.StatusCode != http.StatusPartialContent {
+		t.Fatalf("status code = %d, want 206", result.Protocol.StatusCode)
+	}
+}
+
+func TestProtocolProbeHTTPMarksForbiddenAsWarning(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusForbidden,
+			Status:     "403 Forbidden",
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("")),
+			Request:    r,
+		}, nil
+	})}
+	target := &Target{Raw: "http://example.com", Scheme: "http", Host: "example.com", Port: 80}
+	p := &ProtocolProbe{HTTPClient: client}
+
+	result := p.probeHTTP(context.Background(), target)
+
+	if result.Status != StatusWarning {
+		t.Fatalf("status = %v, want warning for 403", result.Status)
+	}
+}
+
+func TestProtocolProbeHTTPMarksServerErrorAsWarning(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusBadGateway,
+			Status:     "502 Bad Gateway",
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("")),
+			Request:    r,
+		}, nil
+	})}
+	target := &Target{Raw: "http://example.com", Scheme: "http", Host: "example.com", Port: 80}
+	p := &ProtocolProbe{HTTPClient: client}
+
+	result := p.probeHTTP(context.Background(), target)
+
+	if result.Status != StatusWarning {
+		t.Fatalf("status = %v, want warning for 502", result.Status)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
 }
 
 func TestProtocolProbe_SkipsWhenTCPFailed(t *testing.T) {
@@ -179,6 +296,14 @@ func TestLooksLikeProxyRelayFailure_Timeout(t *testing.T) {
 func TestLooksLikeProxyRelayFailure_Normal(t *testing.T) {
 	if looksLikeProxyRelayFailure("HTTP 200 OK (50ms)") {
 		t.Error("normal success message should NOT match")
+	}
+}
+
+func TestProtocolProbeAddrUsesIPv6Brackets(t *testing.T) {
+	p := &ProtocolProbe{}
+	target := &Target{Scheme: "tcp", IP: "2001:db8::1", Port: 443, IsIP: true}
+	if got := p.addr(target); got != "[2001:db8::1]:443" {
+		t.Fatalf("addr = %q, want bracketed IPv6 address", got)
 	}
 }
 

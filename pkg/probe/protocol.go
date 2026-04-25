@@ -8,11 +8,14 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
 
-type ProtocolProbe struct{}
+type ProtocolProbe struct {
+	HTTPClient *http.Client
+}
 
 func (p *ProtocolProbe) Name() string { return "protocol" }
 
@@ -93,25 +96,39 @@ func (p *ProtocolProbe) probeHTTP(ctx context.Context, target *Target) *ProbeRes
 		host = target.IP
 	}
 
-	url := fmt.Sprintf("%s://%s:%d", scheme, host, target.Port)
+	url := fmt.Sprintf("%s://%s", scheme, net.JoinHostPort(host, strconv.Itoa(target.Port)))
 
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
+	client := p.HTTPClient
+	if client == nil {
+		client = &http.Client{
+			Timeout: 10 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			},
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
 	}
 
 	start := time.Now()
-	req, err := http.NewRequestWithContext(ctx, "HEAD", url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
 	if err != nil {
 		return NewResult("protocol", StatusError, fmt.Sprintf("HTTP 请求构造失败: %v", err))
 	}
 
 	resp, err := client.Do(req)
+	method := http.MethodHead
+	if err == nil && (resp.StatusCode == http.StatusMethodNotAllowed || resp.StatusCode == http.StatusNotImplemented) {
+		resp.Body.Close()
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return NewResult("protocol", StatusError, fmt.Sprintf("HTTP 请求构造失败: %v", err))
+		}
+		req.Header.Set("Range", "bytes=0-0")
+		resp, err = client.Do(req)
+		method = http.MethodGet
+	}
 	elapsed := time.Since(start)
 
 	if err != nil {
@@ -124,6 +141,7 @@ func (p *ProtocolProbe) probeHTTP(ctx context.Context, target *Target) *ProbeRes
 
 	details := &ProtocolDetails{
 		Type:       "http",
+		Method:     method,
 		StatusCode: resp.StatusCode,
 	}
 	if server := resp.Header.Get("Server"); server != "" {
@@ -135,10 +153,19 @@ func (p *ProtocolProbe) probeHTTP(ctx context.Context, target *Target) *ProbeRes
 		msg += " | Server: " + details.Version
 	}
 
-	result := NewResult("protocol", StatusOK, msg)
+	result := NewResult("protocol", httpStatusToProbeStatus(resp.StatusCode), msg)
 	result.SetDuration(elapsed)
 	result.Protocol = details
 	return result
+}
+
+func httpStatusToProbeStatus(code int) Status {
+	switch {
+	case code >= 200 && code < 300:
+		return StatusOK
+	default:
+		return StatusWarning
+	}
 }
 
 func (p *ProtocolProbe) probeMySQL(ctx context.Context, target *Target) *ProbeResult {
@@ -449,11 +476,7 @@ func (p *ProtocolProbe) probeGenericTCP(ctx context.Context, target *Target, pre
 }
 
 func (p *ProtocolProbe) addr(target *Target) string {
-	host := target.Host
-	if target.IsIP || host == "" {
-		host = target.IP
-	}
-	return fmt.Sprintf("%s:%d", host, target.Port)
+	return target.Address()
 }
 
 // queryClashConnections queries Clash API /connections and finds the connection

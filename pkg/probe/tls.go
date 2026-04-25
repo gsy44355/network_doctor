@@ -33,10 +33,7 @@ func (p *TLSProbe) Run(ctx context.Context, target *Target, prev map[string]*Pro
 		return NewResult("tls", StatusSkipped, "跳过 (TCP 不通)")
 	}
 
-	addr := fmt.Sprintf("%s:%d", target.IP, target.Port)
-	if target.IP == "" {
-		addr = fmt.Sprintf("%s:%d", target.Host, target.Port)
-	}
+	addr := target.Address()
 
 	serverName := target.Host
 	if serverName == "" {
@@ -75,6 +72,8 @@ func (p *TLSProbe) Run(ctx context.Context, target *Target, prev map[string]*Pro
 			details.Issuer = cert.Issuer.CommonName
 		}
 		details.SNIMatch = verifySNI(cert, serverName)
+		verifyCertificateChain(details, cert, state.PeerCertificates[1:], serverName)
+		classifyCertificateTimeValidity(details, cert, time.Now())
 
 		mitm, mitmDetail := detectMITM(cert, state.PeerCertificates[1:])
 		details.MITM = mitm
@@ -105,6 +104,9 @@ func (p *TLSProbe) Run(ctx context.Context, target *Target, prev map[string]*Pro
 	if !details.SNIMatch {
 		result.Status = StatusWarning
 	}
+	if !details.ValidChain || details.Expired || details.NotYetValid {
+		result.Status = StatusWarning
+	}
 
 	var parts []string
 	parts = append(parts, details.Version)
@@ -114,6 +116,11 @@ func (p *TLSProbe) Run(ctx context.Context, target *Target, prev map[string]*Pro
 		parts = append(parts, "SNI: ❌")
 	}
 	parts = append(parts, "颁发者: "+details.Issuer)
+	if details.ValidChain {
+		parts = append(parts, "证书链: ✅")
+	} else if details.VerifyError != "" {
+		parts = append(parts, "证书链: ⚠️ "+details.VerifyError)
+	}
 	if details.MITM {
 		parts = append(parts, "中间人: ⚠️ "+details.MITMDetail)
 	} else {
@@ -126,6 +133,42 @@ func (p *TLSProbe) Run(ctx context.Context, target *Target, prev map[string]*Pro
 
 func verifySNI(cert *x509.Certificate, serverName string) bool {
 	return cert.VerifyHostname(serverName) == nil
+}
+
+func verifyCertificateChain(details *TLSDetails, cert *x509.Certificate, intermediates []*x509.Certificate, serverName string) {
+	pool := x509.NewCertPool()
+	for _, ic := range intermediates {
+		pool.AddCert(ic)
+	}
+	opts := x509.VerifyOptions{
+		DNSName:       serverName,
+		Intermediates: pool,
+	}
+	if _, err := cert.Verify(opts); err != nil {
+		classifyCertificateVerifyError(details, err)
+		return
+	}
+	details.ValidChain = true
+}
+
+func classifyCertificateVerifyError(details *TLSDetails, err error) {
+	details.ValidChain = false
+	details.VerifyError = err.Error()
+	if invalidErr, ok := err.(x509.CertificateInvalidError); ok {
+		switch invalidErr.Reason {
+		case x509.Expired:
+			details.Expired = true
+		}
+	}
+}
+
+func classifyCertificateTimeValidity(details *TLSDetails, cert *x509.Certificate, now time.Time) {
+	if now.Before(cert.NotBefore) {
+		details.NotYetValid = true
+	}
+	if now.After(cert.NotAfter) {
+		details.Expired = true
+	}
 }
 
 func detectMITM(cert *x509.Certificate, intermediates []*x509.Certificate) (bool, string) {

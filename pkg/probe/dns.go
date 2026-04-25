@@ -95,8 +95,16 @@ func checkDNSConsistency(ctx context.Context, host string, details *DNSDetails) 
 	}
 
 	pubIPs, err := publicResolver.LookupIPAddr(ctx, host)
+	applyPublicDNSConsistency(pubIPs, err, details)
+}
+
+func applyPublicDNSConsistency(pubIPs []net.IPAddr, err error, details *DNSDetails) {
 	if err != nil {
-		details.InternalDomain = true
+		if dnsErr, ok := err.(*net.DNSError); ok && dnsErr.IsNotFound {
+			details.InternalDomain = true
+			return
+		}
+		details.PublicDNSError = err.Error()
 		return
 	}
 
@@ -107,7 +115,6 @@ func checkDNSConsistency(ctx context.Context, host string, details *DNSDetails) 
 			details.PublicDNSResult = ip.IP.String()
 		}
 	}
-
 	consistent := false
 	for _, ip := range details.IPv4 {
 		if pubIPSet[ip] {

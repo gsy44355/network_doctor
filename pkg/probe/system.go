@@ -3,6 +3,7 @@ package probe
 import (
 	"context"
 	"net"
+	"strconv"
 	"strings"
 )
 
@@ -91,7 +92,7 @@ func detectOutInterface(target *Target) string {
 	if target.IsIP {
 		addr = target.IP
 	}
-	conn, err := net.Dial("udp", addr+":80")
+	conn, err := net.Dial("udp", net.JoinHostPort(addr, strconv.Itoa(80)))
 	if err != nil {
 		return "未知"
 	}

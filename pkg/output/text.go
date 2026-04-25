@@ -103,6 +103,9 @@ func (r *TextRenderer) renderVerbose(w io.Writer, result *probe.ProbeResult) {
 		}
 	case result.TLS != nil:
 		tls := result.TLS
+		if tls.VerifyError != "" {
+			fmt.Fprintf(w, "       验证错误: %s\n", tls.VerifyError)
+		}
 		if tls.NotBefore != "" {
 			fmt.Fprintf(w, "       有效期: %s ~ %s (剩余 %d 天)\n", tls.NotBefore, tls.NotAfter, tls.DaysLeft)
 		}
@@ -111,6 +114,10 @@ func (r *TextRenderer) renderVerbose(w io.Writer, result *probe.ProbeResult) {
 		}
 		if tls.SHA256 != "" {
 			fmt.Fprintf(w, "       指纹: SHA256:%s\n", tls.SHA256[:16]+"...")
+		}
+	case result.Protocol != nil && result.Protocol.Type == "http":
+		if result.Protocol.Method != "" {
+			fmt.Fprintf(w, "       方法: %s\n", result.Protocol.Method)
 		}
 	}
 }

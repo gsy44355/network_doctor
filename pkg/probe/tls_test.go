@@ -2,7 +2,9 @@ package probe
 
 import (
 	"context"
+	"crypto/x509"
 	"testing"
+	"time"
 )
 
 func TestTLSProbe_SkipsNonTLS(t *testing.T) {
@@ -44,5 +46,30 @@ func TestTLSProbe_SuccessfulHandshake(t *testing.T) {
 	}
 	if !result.TLS.SNIMatch {
 		t.Error("SNI should match for google.com")
+	}
+}
+
+func TestClassifyCertificateVerifyErrorExpired(t *testing.T) {
+	details := &TLSDetails{}
+	err := x509.CertificateInvalidError{Reason: x509.Expired}
+
+	classifyCertificateVerifyError(details, err)
+
+	if !details.Expired {
+		t.Fatal("expired certificate should be marked")
+	}
+	if details.VerifyError == "" {
+		t.Fatal("verify error should be recorded")
+	}
+}
+
+func TestClassifyCertificateTimeValidityNotYetValid(t *testing.T) {
+	details := &TLSDetails{}
+	cert := &x509.Certificate{NotBefore: time.Now().Add(time.Hour), NotAfter: time.Now().Add(2 * time.Hour)}
+
+	classifyCertificateTimeValidity(details, cert, time.Now())
+
+	if !details.NotYetValid {
+		t.Fatal("future certificate should be marked as not yet valid")
 	}
 }

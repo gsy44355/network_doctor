@@ -57,6 +57,8 @@ func Diagnose(results map[string]*probe.ProbeResult) *Diagnosis {
 			}
 			if dns.DNS.InternalDomain {
 				d.Warnings = append(d.Warnings, "内部域名，仅在当前 DNS 可解析")
+			} else if dns.DNS.PublicDNSError != "" {
+				d.Warnings = append(d.Warnings, "公共 DNS 查询失败，无法判断 DNS 一致性: "+dns.DNS.PublicDNSError)
 			} else if dns.DNS.Consistent != nil && !*dns.DNS.Consistent {
 				d.Warnings = append(d.Warnings, "DNS 解析结果与公共 DNS 不一致，可能存在 DNS 劫持")
 			}
@@ -106,6 +108,13 @@ func Diagnose(results map[string]*probe.ProbeResult) *Diagnosis {
 			if !tlsResult.TLS.SNIMatch {
 				d.Warnings = append(d.Warnings, "SNI 与证书不匹配")
 			}
+			if tlsResult.TLS.Expired {
+				d.Warnings = append(d.Warnings, "TLS 证书已过期")
+			} else if tlsResult.TLS.NotYetValid {
+				d.Warnings = append(d.Warnings, "TLS 证书尚未生效")
+			} else if !tlsResult.TLS.ValidChain && tlsResult.TLS.VerifyError != "" {
+				d.Warnings = append(d.Warnings, "TLS 证书链验证失败: "+tlsResult.TLS.VerifyError)
+			}
 		}
 	}
 
@@ -128,6 +137,9 @@ func Diagnose(results map[string]*probe.ProbeResult) *Diagnosis {
 				d.Suggestion = "检查目标服务是否正常运行，或是否有代理/防火墙拦截应用层协议"
 			}
 			return d
+		}
+		if proto.Status == probe.StatusWarning && proto.Protocol != nil && proto.Protocol.Type == "http" && proto.Protocol.StatusCode > 0 {
+			d.Warnings = append(d.Warnings, fmt.Sprintf("HTTP %d 非 2xx 响应，网络可达但请求未成功", proto.Protocol.StatusCode))
 		}
 		if proto.Protocol != nil && proto.Protocol.AuthRequired {
 			d.Warnings = append(d.Warnings, "协议可达，服务端要求认证（这不是网络问题）")

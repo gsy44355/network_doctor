@@ -51,6 +51,9 @@ func parseURI(t *probe.Target, raw string) error {
 		if err != nil {
 			return fmt.Errorf("无效的端口号: %s", portStr)
 		}
+		if err := validatePort(p); err != nil {
+			return err
+		}
 		t.Port = p
 	} else if dp, ok := schemeToPort[t.Scheme]; ok {
 		t.Port = dp
@@ -77,6 +80,9 @@ func parseHostPort(t *probe.Target, raw string) error {
 		if err != nil {
 			return fmt.Errorf("无效的端口号: %s", portStr)
 		}
+		if err := validatePort(p); err != nil {
+			return err
+		}
 		t.Port = p
 		if scheme, ok := portToScheme[p]; ok {
 			t.Scheme = scheme
@@ -93,16 +99,23 @@ func parseHostPort(t *probe.Target, raw string) error {
 	return nil
 }
 
+func validatePort(port int) error {
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("端口号超出范围: %d", port)
+	}
+	return nil
+}
+
 func ParseLines(content string) ([]*probe.Target, error) {
 	var targets []*probe.Target
-	for _, line := range strings.Split(content, "\n") {
+	for lineNo, line := range strings.Split(content, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
 		t, err := Parse(line)
 		if err != nil {
-			return nil, fmt.Errorf("第 %d 行解析失败: %w", len(targets)+1, err)
+			return nil, fmt.Errorf("第 %d 行解析失败: %w", lineNo+1, err)
 		}
 		targets = append(targets, t)
 	}

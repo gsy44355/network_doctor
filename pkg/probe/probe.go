@@ -2,7 +2,8 @@ package probe
 
 import (
 	"context"
-	"fmt"
+	"net"
+	"strconv"
 	"time"
 )
 
@@ -31,18 +32,18 @@ func (s Status) String() string {
 }
 
 type ProbeResult struct {
-	Name      string        `json:"name"`
-	Status    Status        `json:"-"`
-	StatusStr string        `json:"status"`
-	Duration  time.Duration `json:"-"`
-	DurationMs int64        `json:"duration_ms,omitempty"`
-	Message   string        `json:"message,omitempty"`
-	System    *SystemDetails   `json:"system,omitempty"`
-	DNS       *DNSDetails      `json:"dns,omitempty"`
-	Clash     *ClashDetails    `json:"clash,omitempty"`
-	Conn      *ConnDetails     `json:"conn,omitempty"`
-	TLS       *TLSDetails      `json:"tls,omitempty"`
-	Protocol  *ProtocolDetails `json:"protocol,omitempty"`
+	Name       string           `json:"name"`
+	Status     Status           `json:"-"`
+	StatusStr  string           `json:"status"`
+	Duration   time.Duration    `json:"-"`
+	DurationMs int64            `json:"duration_ms,omitempty"`
+	Message    string           `json:"message,omitempty"`
+	System     *SystemDetails   `json:"system,omitempty"`
+	DNS        *DNSDetails      `json:"dns,omitempty"`
+	Clash      *ClashDetails    `json:"clash,omitempty"`
+	Conn       *ConnDetails     `json:"conn,omitempty"`
+	TLS        *TLSDetails      `json:"tls,omitempty"`
+	Protocol   *ProtocolDetails `json:"protocol,omitempty"`
 }
 
 func NewResult(name string, status Status, msg string) *ProbeResult {
@@ -68,13 +69,14 @@ type SystemDetails struct {
 }
 
 type DNSDetails struct {
-	IPv4           []string `json:"ipv4"`
-	IPv6           []string `json:"ipv6"`
-	Server         string   `json:"server,omitempty"`
-	Consistent     *bool    `json:"consistent,omitempty"`
-	InternalDomain bool     `json:"internal_domain,omitempty"`
-	PublicDNSResult string  `json:"public_dns_result,omitempty"`
-	FakeIP         bool     `json:"fake_ip,omitempty"`
+	IPv4            []string `json:"ipv4"`
+	IPv6            []string `json:"ipv6"`
+	Server          string   `json:"server,omitempty"`
+	Consistent      *bool    `json:"consistent,omitempty"`
+	InternalDomain  bool     `json:"internal_domain,omitempty"`
+	PublicDNSResult string   `json:"public_dns_result,omitempty"`
+	PublicDNSError  string   `json:"public_dns_error,omitempty"`
+	FakeIP          bool     `json:"fake_ip,omitempty"`
 }
 
 type ClashDetails struct {
@@ -93,20 +95,25 @@ type ConnDetails struct {
 }
 
 type TLSDetails struct {
-	Version    string   `json:"version"`
-	SNIMatch   bool     `json:"sni_match"`
-	Issuer     string   `json:"issuer"`
-	MITM       bool     `json:"mitm"`
-	MITMDetail string   `json:"mitm_detail,omitempty"`
-	NotBefore  string   `json:"not_before,omitempty"`
-	NotAfter   string   `json:"not_after,omitempty"`
-	DaysLeft   int      `json:"days_left,omitempty"`
-	Chain      []string `json:"chain,omitempty"`
-	SHA256     string   `json:"sha256,omitempty"`
+	Version     string   `json:"version"`
+	SNIMatch    bool     `json:"sni_match"`
+	Issuer      string   `json:"issuer"`
+	ValidChain  bool     `json:"valid_chain"`
+	VerifyError string   `json:"verify_error,omitempty"`
+	Expired     bool     `json:"expired,omitempty"`
+	NotYetValid bool     `json:"not_yet_valid,omitempty"`
+	MITM        bool     `json:"mitm"`
+	MITMDetail  string   `json:"mitm_detail,omitempty"`
+	NotBefore   string   `json:"not_before,omitempty"`
+	NotAfter    string   `json:"not_after,omitempty"`
+	DaysLeft    int      `json:"days_left,omitempty"`
+	Chain       []string `json:"chain,omitempty"`
+	SHA256      string   `json:"sha256,omitempty"`
 }
 
 type ProtocolDetails struct {
 	Type             string   `json:"type"`
+	Method           string   `json:"method,omitempty"`
 	StatusCode       int      `json:"status_code,omitempty"`
 	Version          string   `json:"version,omitempty"`
 	Banner           string   `json:"banner,omitempty"`
@@ -138,5 +145,5 @@ func (t *Target) Address() string {
 	if t.IsIP {
 		host = t.IP
 	}
-	return fmt.Sprintf("%s:%d", host, t.Port)
+	return net.JoinHostPort(host, strconv.Itoa(t.Port))
 }

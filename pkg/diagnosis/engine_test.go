@@ -112,6 +112,89 @@ func TestDiagnose_InternalDomain(t *testing.T) {
 	}
 }
 
+func TestDiagnose_PublicDNSErrorDoesNotWarnAsInternalDomain(t *testing.T) {
+	results := map[string]*probe.ProbeResult{
+		"system": {Name: "system", Status: probe.StatusOK},
+		"dns":    {Name: "dns", Status: probe.StatusOK, DNS: &probe.DNSDetails{PublicDNSError: "i/o timeout"}},
+		"conn":   {Name: "conn", Status: probe.StatusOK},
+	}
+	d := Diagnose(results)
+	for _, w := range d.Warnings {
+		if strings.Contains(w, "内部域名") {
+			t.Fatalf("should not warn internal domain when public DNS transport failed: %v", d.Warnings)
+		}
+	}
+	if len(d.Warnings) == 0 {
+		t.Fatal("should warn that public DNS consistency could not be checked")
+	}
+}
+
+func TestDiagnose_TLSVerifyWarning(t *testing.T) {
+	results := map[string]*probe.ProbeResult{
+		"system":   {Name: "system", Status: probe.StatusOK},
+		"dns":      {Name: "dns", Status: probe.StatusOK},
+		"conn":     {Name: "conn", Status: probe.StatusOK},
+		"tls":      {Name: "tls", Status: probe.StatusWarning, TLS: &probe.TLSDetails{SNIMatch: true, ValidChain: false, VerifyError: "certificate expired", Expired: true}},
+		"protocol": {Name: "protocol", Status: probe.StatusOK},
+	}
+	d := Diagnose(results)
+	found := false
+	for _, w := range d.Warnings {
+		if strings.Contains(w, "证书已过期") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("should warn expired certificate, got %v", d.Warnings)
+	}
+}
+
+func TestDiagnose_HTTPWarningRemainsReachableWithWarning(t *testing.T) {
+	results := map[string]*probe.ProbeResult{
+		"system":   {Name: "system", Status: probe.StatusOK},
+		"dns":      {Name: "dns", Status: probe.StatusOK},
+		"conn":     {Name: "conn", Status: probe.StatusOK},
+		"tls":      {Name: "tls", Status: probe.StatusOK},
+		"protocol": {Name: "protocol", Status: probe.StatusWarning, Protocol: &probe.ProtocolDetails{Type: "http", StatusCode: 403}},
+	}
+	d := Diagnose(results)
+	if !d.Reachable {
+		t.Fatal("4xx HTTP response should remain network-reachable")
+	}
+	found := false
+	for _, w := range d.Warnings {
+		if strings.Contains(w, "HTTP 403") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("should warn HTTP status code, got %v", d.Warnings)
+	}
+}
+
+func TestDiagnose_HTTPServerErrorRemainsReachableWithWarning(t *testing.T) {
+	results := map[string]*probe.ProbeResult{
+		"system":   {Name: "system", Status: probe.StatusOK},
+		"dns":      {Name: "dns", Status: probe.StatusOK},
+		"conn":     {Name: "conn", Status: probe.StatusOK},
+		"tls":      {Name: "tls", Status: probe.StatusOK},
+		"protocol": {Name: "protocol", Status: probe.StatusWarning, Protocol: &probe.ProtocolDetails{Type: "http", StatusCode: 502}},
+	}
+	d := Diagnose(results)
+	if !d.Reachable {
+		t.Fatal("5xx HTTP response should remain network-reachable")
+	}
+	found := false
+	for _, w := range d.Warnings {
+		if strings.Contains(w, "HTTP 502") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("should warn HTTP 502, got %v", d.Warnings)
+	}
+}
+
 func TestDiagnose_ProxyRelayFailed_WithChain(t *testing.T) {
 	results := map[string]*probe.ProbeResult{
 		"system":   {Name: "system", Status: probe.StatusOK, System: &probe.SystemDetails{TUN: "utun3 (Clash)", TUNName: "utun3"}},

@@ -63,6 +63,9 @@ func run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("无效的超时时间: %s", flagTimeout)
 	}
+	if err := validateConcurrency(flagConcurrency); err != nil {
+		return err
+	}
 
 	if flagNoColor {
 		color.NoColor = true
@@ -177,6 +180,13 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	os.Exit(exitCode)
+	return nil
+}
+
+func validateConcurrency(n int) error {
+	if n < 1 {
+		return fmt.Errorf("并发检测数量必须大于 0")
+	}
 	return nil
 }
 

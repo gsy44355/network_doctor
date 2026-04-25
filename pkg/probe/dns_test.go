@@ -2,6 +2,7 @@ package probe
 
 import (
 	"context"
+	"net"
 	"testing"
 )
 
@@ -26,5 +27,30 @@ func TestDNSProbe_ResolvesHostname(t *testing.T) {
 	}
 	if len(result.DNS.IPv4) == 0 && len(result.DNS.IPv6) == 0 {
 		t.Error("expected at least one IP address")
+	}
+}
+
+func TestDNSConsistencyTreatsPublicResolverTransportErrorAsUnknown(t *testing.T) {
+	details := &DNSDetails{}
+	err := &net.DNSError{Err: "timeout", Name: "internal.example", IsTimeout: true}
+
+	applyPublicDNSConsistency(nil, err, details)
+
+	if details.InternalDomain {
+		t.Fatal("transport errors should not be classified as internal domains")
+	}
+	if details.PublicDNSError == "" {
+		t.Fatal("public DNS error should be recorded")
+	}
+}
+
+func TestDNSConsistencyTreatsPublicNXDomainAsInternalDomain(t *testing.T) {
+	details := &DNSDetails{}
+	err := &net.DNSError{Err: "no such host", Name: "internal.example", IsNotFound: true}
+
+	applyPublicDNSConsistency(nil, err, details)
+
+	if !details.InternalDomain {
+		t.Fatal("NXDOMAIN from public DNS should indicate an internal-only domain")
 	}
 }

@@ -17,10 +17,7 @@ func (p *ConnProbe) Run(ctx context.Context, target *Target, prev map[string]*Pr
 		return NewResult("conn", StatusSkipped, "跳过 (DNS 解析失败)")
 	}
 
-	addr := fmt.Sprintf("%s:%d", target.IP, target.Port)
-	if target.IP == "" {
-		addr = fmt.Sprintf("%s:%d", target.Host, target.Port)
-	}
+	addr := target.Address()
 
 	start := time.Now()
 	deadline, hasDeadline := ctx.Deadline()

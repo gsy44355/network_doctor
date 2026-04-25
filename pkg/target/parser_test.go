@@ -1,6 +1,7 @@
 package target
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -67,5 +68,32 @@ func TestParseTargetFile(t *testing.T) {
 	}
 	if targets[2].Scheme != "redis" {
 		t.Errorf("targets[2].Scheme = %q, want redis", targets[2].Scheme)
+	}
+}
+
+func TestParseRejectsInvalidPortRange(t *testing.T) {
+	tests := []string{
+		"example.com:0",
+		"example.com:65536",
+		"http://example.com:0",
+		"http://example.com:65536",
+	}
+	for _, input := range tests {
+		t.Run(input, func(t *testing.T) {
+			if _, err := Parse(input); err == nil {
+				t.Fatalf("Parse(%q) expected error", input)
+			}
+		})
+	}
+}
+
+func TestParseLinesReportsPhysicalLineNumber(t *testing.T) {
+	content := "# comment\n\nhttps://ok.example\nbad://missing-port\n"
+	_, err := ParseLines(content)
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if got := err.Error(); !strings.Contains(got, "第 4 行解析失败") {
+		t.Fatalf("error = %q, want physical line 4", got)
 	}
 }
